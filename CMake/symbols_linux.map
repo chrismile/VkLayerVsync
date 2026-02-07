@@ -1,0 +1,9 @@
+{
+global:
+    /* Export Vulkan symbols for loader. */
+    VsyncLayer_GetInstanceProcAddr;
+    VsyncLayer_GetDeviceProcAddr;
+local:
+    /* Hide all other symbols. */
+    *;
+};

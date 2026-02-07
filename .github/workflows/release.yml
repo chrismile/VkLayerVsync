@@ -1,0 +1,142 @@
+# BSD 3-Clause License
+# 
+# Copyright (c) 2026, Christoph Neuhauser
+# All rights reserved.
+# 
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+# 
+# * Redistributions of source code must retain the above copyright notice, this
+#   list of conditions and the following disclaimer.
+# 
+# * Redistributions in binary form must reproduce the above copyright notice,
+#   this list of conditions and the following disclaimer in the documentation
+#   and/or other materials provided with the distribution.
+# 
+# * Neither the name of the copyright holder nor the names of its
+#   contributors may be used to endorse or promote products derived from
+#   this software without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+name: Handle Release
+
+#on:
+#  push:
+#    tags:
+#      - "v*.*.*"
+on:
+  release:
+    types: [created]
+
+permissions:
+    contents: write
+
+jobs:
+  generate:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux targets.
+          - os: ubuntu-22.04
+            target_name: x86_64-linux
+            shell: bash
+          - os: ubuntu-22.04
+            target_name: aarch64-linux
+            shell: bash
+          # Windows targets.
+          - os: windows-2022
+            target_name: x86_64-windows
+            shell: 'bash -el {0}'
+          - os: windows-2022
+            target_name: x86_64-windows-gnu
+            shell: 'msys2 {0}'
+
+    name: "Create release-artifacts target ${{ matrix.target_name }}"
+    runs-on: ${{ matrix.os }}
+
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+
+    env:
+      artifact_name: ${{ github.event.repository.name }}-${{ github.event.release.tag_name }}-${{ matrix.target_name }}
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: true
+
+      - uses: msys2/setup-msys2@v2
+        if: matrix.target_name == 'x86_64-windows-gnu'
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            base-devel
+            make
+            git
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-gcc
+
+      - name: Build target
+        run: |
+          CMAKE_ARGS=()
+          if [ "${{ matrix.target_name }}" == "x86_64-windows-gnu" ]; then
+              CMAKE_ARGS+=(-G "MSYS Makefiles")
+          fi
+          if [ "$RUNNER_OS" == "Linux" ] && [ "${{ matrix.target_name }}" == "aarch64-linux" ]; then
+              sudo apt update
+              sudo apt install -y g++-aarch64-linux-gnu libc6-dev-arm64-cross
+              CMAKE_ARGS+=(-DCMAKE_TOOLCHAIN_FILE="CMake/aarch64-linux-gnu.toolchain.cmake")
+          fi
+          cmake . -B build -DCMAKE_BUILD_TYPE=Release ${CMAKE_ARGS[@]+"${CMAKE_ARGS[@]}"}
+          cmake --build build --config Release
+
+      - name: Copy files
+        run: |
+          proj_name=${{ github.event.repository.name }}
+          mkdir dist
+          if [ "$RUNNER_OS" == "Windows" ]; then
+              if [ "${{ matrix.target_name }}" == "x86_64-windows-gnu" ]; then
+                  cp "build/libVkLayer_vsync.dll" "dist/"
+              else
+                  cp "build/Release/VkLayer_vsync.dll" "dist/"
+              fi
+          else
+              cp "build/libVkLayer_vsync.so" "dist/"
+          fi
+          cp README.md dist
+          cp LICENSE dist
+          mv dist ${{ env.artifact_name }}
+
+      # vimtor removes the '+x' flag (https://github.com/vimtor/action-zip/issues/21) on Linux/macOS.
+      - uses: vimtor/action-zip@v1.2
+        if: runner.os == 'Windows'
+        with:
+          files: ${{ env.artifact_name }}/
+          dest: ${{ env.artifact_name }}.zip
+      - name: Create archive (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          pushd ${{ env.artifact_name }} >/dev/null
+          zip -r ../${{ env.artifact_name }}.zip .
+          popd >/dev/null
+
+      # Needs "Read and write permission" under "Workflow permissions" on https://github.com/chrismile/tetgen/settings/actions.
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        #if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: ${{ env.artifact_name }}.zip
