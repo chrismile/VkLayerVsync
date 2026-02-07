@@ -92,13 +92,14 @@ jobs:
               sudo apt install -y g++-aarch64-linux-gnu libc6-dev-arm64-cross
               CMAKE_ARGS+=(-DCMAKE_TOOLCHAIN_FILE="CMake/aarch64-linux-gnu.toolchain.cmake")
           fi
-          cmake . -B build -DCMAKE_BUILD_TYPE=Release ${CMAKE_ARGS[@]+"${CMAKE_ARGS[@]}"}
+          cmake . -B build -DCMAKE_BUILD_TYPE=Release -DUSE_STATIC_STD_LIBRARIES=ON ${CMAKE_ARGS[@]+"${CMAKE_ARGS[@]}"}
           cmake --build build --config Release
 
       - name: Copy files
         run: |
           proj_name=${{ github.event.repository.name }}
           mkdir dist
+          mkdir dist/docs
           if [ "$RUNNER_OS" == "Windows" ]; then
               if [ "${{ matrix.target_name }}" == "x86_64-windows-gnu" ]; then
                   cp "build/libVkLayer_vsync.dll" "dist/"
@@ -108,5 +109,6 @@ jobs:
           else
               cp "build/libVkLayer_vsync.so" "dist/"
           fi
-          cp README.md dist
-          cp LICENSE dist
+          cp -r docs/license-libraries dist/docs/license-libraries
+          cp README.md dist/docs
+          cp LICENSE dist/docs

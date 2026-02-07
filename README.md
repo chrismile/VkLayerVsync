@@ -1,4 +1,4 @@
-# VkLayerVsync
+# VkLayer_vsync
 
 A Vulkan layer for overwriting the vsync behavior of Vulkan apps.
 

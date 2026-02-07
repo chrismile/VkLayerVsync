@@ -3,6 +3,17 @@ project(VkLayerVsync)
 
 set(CMAKE_CXX_STANDARD 17)
 
+if(MSVC)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -W3 /EHsc /Zc:__cplusplus")
+elseif(CMAKE_COMPILER_IS_GNUCXX)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall")
+endif()
+
+option(USE_STATIC_STD_LIBRARIES "Link with standard libraries statically." OFF)
+set(DATA_PATH "${CMAKE_SOURCE_DIR}/Data" CACHE PATH "Location of folder 'Data'")
+
 if (NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/Vulkan-Headers/include")
     message(FATAL_ERROR "Error: Submodules are not cloned. Please call \"git submodule update --init --recursive\".")
 endif()
@@ -16,6 +27,15 @@ list(APPEND SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/third_party/Vulkan-Utility-Libr
 add_library(VkLayer_vsync SHARED ${SOURCES})
 target_include_directories(VkLayer_vsync PRIVATE third_party/Vulkan-Headers/include)
 target_include_directories(VkLayer_vsync PRIVATE third_party/Vulkan-Utility-Libraries/include)
+
+if (${USE_STATIC_STD_LIBRARIES})
+    if (MSYS OR MINGW OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_link_options(VkLayer_vsync PRIVATE -static-libgcc -static-libstdc++)
+    endif()
+    if (MSYS OR MINGW OR (WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU"))
+        target_link_options(VkLayer_vsync PRIVATE -static -lpthread)
+    endif()
+endif()
 
 if (UNIX AND NOT APPLE AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_link_options(VkLayer_vsync PRIVATE "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/CMake/symbols_linux.map")
