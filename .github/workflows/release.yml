@@ -117,6 +117,7 @@ jobs:
           else
               cp "build/libVkLayer_vsync.so" "dist/"
           fi
+          cp "build/VkLayer_vsync.json" "dist/"
           cp -r docs/license-libraries dist/docs/license-libraries
           cp README.md dist/docs
           cp LICENSE dist/docs
